@@ -1,6 +1,7 @@
 (ns clj-kondo.lsp-server.impl.server
   {:no-doc true}
   (:import [java.util.concurrent CompletableFuture]
+           [java.nio.file FileSystems]
            [org.eclipse.lsp4j
             Diagnostic
             DiagnosticSeverity
@@ -34,9 +35,28 @@
 
 (defonce proxy-state (atom nil))
 
+(defn user-home-dir ^String []
+  (get (System/getProperties) "user.home"))
+
+(defn path-from-string [^String path-part1 & other-path-parts]
+  (let [default-file-system (java.nio.file.FileSystems/getDefault)]
+    (.getPath default-file-system path-part1
+              (into-array String other-path-parts))))
+
+(def local-log-file-name "clj-kondo-lsp-server-log.txt")
+
+(def local-log-file-path (path-from-string (user-home-dir) local-log-file-name))
+
+(def local-log-file-writer (delay (io/writer (.toUri local-log-file-path))))
+
 (defn log! [level & msg]
   (when-let [client @proxy-state]
-    (let [msg (str/join " " msg)]
+    (let [msg (str/join " " msg)
+          ^java.io.Writer wrtr @local-log-file-writer]
+      (.write wrtr (str level " "))
+      (.write wrtr msg)
+      (.write wrtr "\n")
+      (.flush wrtr)
       (.logMessage ^LanguageClient client
                    (MessageParams. (case level
                                      :error MessageType/Error
@@ -54,7 +74,7 @@
 (defn info [& msgs]
   (apply log! :info msgs))
 
-(def debug? false)
+(def debug? true)
 
 (defn debug [& msgs]
   (when debug?
