@@ -139,7 +139,9 @@
                 (io/file)
                 (.getParentFile))
         dir (config-dir dir)]
-    (when dir (debug "found config dir at" dir))
+    (if dir
+      (debug "found config dir at" dir "starting from" path)
+      (debug "found NO config dir starting from" path))
     dir))
 
 (defn lint! [text uri]
@@ -157,6 +159,9 @@
           lines (str/split text #"\r?\n")
           diagnostics (vec (keep #(finding->Diagnostic lines %) findings))]
       (debug "publishing diagnostics")
+;;      (debug "----------------------------------------")
+;;      (debug (str diagnostics))
+;;      (debug "----------------------------------------")
       (.publishDiagnostics ^LanguageClient @proxy-state
                            (PublishDiagnosticsParams.
                             uri
@@ -193,27 +198,33 @@
 (def server
   (proxy [LanguageServer] []
     (^CompletableFuture initialize [^InitializeParams params]
+     (debug "called server initialize")
      (CompletableFuture/completedFuture
       (InitializeResult. (doto (ServerCapabilities.)
                            (.setTextDocumentSync (doto (TextDocumentSyncOptions.)
                                                    (.setOpenClose true)
                                                    (.setChange TextDocumentSyncKind/Full)))))))
     (^CompletableFuture initialized [^InitializedParams params]
+     (debug "called server initialized")
      (info "Clj-kondo language server loaded. Please report any issues to https://github.com/borkdude/clj-kondo."))
     (^CompletableFuture shutdown []
+     (debug "called server shutdown")
      (info "Clj-kondo language server shutting down.")
      (CompletableFuture/completedFuture 0))
 
     (^void exit []
+     (debug "called server exit")
      (debug "trying to exit clj-kondo")
      (shutdown-agents)
      (debug "agents down, exiting with status zero")
      (System/exit 0))
 
     (getTextDocumentService []
+      (debug "called server getTextDocumentService")
       (LSPTextDocumentService.))
 
     (getWorkspaceService []
+      (debug "called server getWorkspaceService")
       (LSPWorkspaceService.))))
 
 (defn run-server! []
