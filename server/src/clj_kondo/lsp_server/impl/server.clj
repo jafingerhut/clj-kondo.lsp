@@ -45,17 +45,20 @@
 
 (def local-log-file-name "clj-kondo-lsp-server-log.txt")
 
-(def local-log-file-path (path-from-string (user-home-dir) local-log-file-name))
+(def ^java.nio.file.Path local-log-file-path
+  (path-from-string (user-home-dir) local-log-file-name))
 
-(def local-log-file-writer (delay (io/writer (.toUri local-log-file-path))))
+(def ^java.net.URI local-log-file-uri (.toUri local-log-file-path))
+
+(def jvm-name (.getName
+               (java.lang.management.ManagementFactory/getRuntimeMXBean)))
 
 (defn log! [level & msg]
   (when-let [client @proxy-state]
     (let [msg (str/join " " msg)
-          ^java.io.Writer wrtr @local-log-file-writer]
-      (.write wrtr (str level " "))
-      (.write wrtr msg)
-      (.write wrtr "\n")
+          full-msg (str jvm-name " " level " " msg "\n")
+          ^java.io.Writer wrtr (io/writer local-log-file-uri :append true)]
+      (.write wrtr full-msg)
       (.flush wrtr)
       (.logMessage ^LanguageClient client
                    (MessageParams. (case level
@@ -145,6 +148,7 @@
     dir))
 
 (defn lint! [text uri]
+  (debug "called fn lint! with uri='" uri "'")
   (when-not (str/ends-with? uri ".calva/output-window/output.calva-repl")
     (let [lang (uri->lang uri)
           path (-> (java.net.URI. uri)
@@ -170,6 +174,7 @@
 (deftype LSPTextDocumentService []
   TextDocumentService
   (^void didOpen [_ ^DidOpenTextDocumentParams params]
+   (debug "called method didOpen on deftype LSPTextDocumentService")
    (do! (let [td (.getTextDocument params)
               text (.getText td)
               uri (.getUri td)]
@@ -177,6 +182,7 @@
           (lint! text uri))))
 
   (^void didChange [_ ^DidChangeTextDocumentParams params]
+   (debug "called method didChange on deftype LSPTextDocumentService")
    (do! (let [td ^TextDocumentIdentifier (.getTextDocument params)
               changes (.getContentChanges params)
               change (first changes)
@@ -185,15 +191,20 @@
           (debug "changed file, linting:" uri)
           (lint! text uri))))
 
-  (^void didSave [_ ^DidSaveTextDocumentParams _params])
+  (^void didSave [_ ^DidSaveTextDocumentParams _params]
+   (debug "called method didSave on deftype LSPTextDocumentService"))
 
-  (^void didClose [_ ^DidCloseTextDocumentParams params]))
+  (^void didClose [_ ^DidCloseTextDocumentParams params]
+   (debug "called method didClose on deftype LSPTextDocumentService")))
 
 (deftype LSPWorkspaceService []
   WorkspaceService
-  (^CompletableFuture executeCommand [_ ^ExecuteCommandParams params])
-  (^void didChangeConfiguration [_ ^DidChangeConfigurationParams params])
-  (^void didChangeWatchedFiles [_ ^DidChangeWatchedFilesParams _params]))
+  (^CompletableFuture executeCommand [_ ^ExecuteCommandParams params]
+   (debug "called method executeCommand on deftype LSPWorkspaceService"))
+  (^void didChangeConfiguration [_ ^DidChangeConfigurationParams params]
+   (debug "called method didChangeConfiguration on deftype LSPWorkspaceService"))
+  (^void didChangeWatchedFiles [_ ^DidChangeWatchedFilesParams _params]
+   (debug "called method DidChangeWatchedFiles on deftype LSPWorkspaceService")))
 
 (def server
   (proxy [LanguageServer] []
@@ -228,6 +239,7 @@
       (LSPWorkspaceService.))))
 
 (defn run-server! []
+  (debug "called run-server!")
   (let [launcher (LSPLauncher/createServerLauncher server System/in System/out)
         proxy ^LanguageClient (.getRemoteProxy launcher)]
     (reset! proxy-state proxy)
